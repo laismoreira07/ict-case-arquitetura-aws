@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pipeline de Observabilidade SRE - AWS</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #e2e8f0; margin: 0; padding: 40px 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { max-width: 1000px; width: 100%; background-color: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border-top: 5px solid #EC7000; }
+        h1 { color: #38bdf8; text-align: center; margin-bottom: 5px; }
+        p.subtitle { text-align: center; color: #94a3b8; margin-bottom: 30px; }
+        .mermaid { background-color: #f8fafc; padding: 20px; border-radius: 8px; overflow-x: auto; text-align: center; }
+        .footer { margin-top: 30px; text-align: center; font-size: 0.9em; color: #64748b; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+    <script> mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose', flowchart: { curve: 'basis' } }); </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Pipeline de Observabilidade SRE</h1>
+        <p class="subtitle">Arquitetura de Coleta, Correlação e Resposta Automatizada na AWS</p>
+        <div class="mermaid">
+            graph TD
+                classDef origin fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#000
+                classDef collect fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px,color:#000
+                classDef storage fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000
+                classDef view fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#000
+                classDef auto fill:#ffebee,stroke:#d32f2f,stroke-width:2px,color:#000
+                A1[Microsserviços ECS/EKS]:::origin
+                A2[APIs REST]:::origin
+                B[AWS Distro for OpenTelemetry <br> CloudWatch Agent]:::collect
+                C1[(CloudWatch Logs <br> JSON / Insights)]:::storage
+                C2[(Managed Prometheus <br> Métricas / SLIs)]:::storage
+                C3[(AWS X-Ray <br> Tracing Distribuído)]:::storage
+                D[Amazon Managed Grafana <br> Dashboards / Golden Signals]:::view
+                E1{CloudWatch Alarms}:::auto
+                E2[EventBridge <br> Roteamento de Incidentes]:::auto
+                E3[Step Functions <br> Playbook de Resposta]:::auto
+                E4((Notificação SNS / <br> Auto-Remediação Lambda)):::auto
+                A1 -->|Telemetria| B
+                A2 -->|Eventos| B
+                B -->|Logs c/ trace_id| C1
+                B -->|Métricas de Saturação| C2
+                B -->|Spans de Latência| C3
+                C1 --> D
+                C2 --> D
+                C3 --> D
+                C2 -.->|Violação de SLO| E1
+                C1 -.->|Pico de Erros| E1
+                E1 --> E2
+                E2 --> E3
+                E3 --> E4
+        </div>
+        <div class="footer">Desenvolvido para análise de caso técnico - Observabilidade e SRE</div>
+    </div>
+</body>
+</html>
