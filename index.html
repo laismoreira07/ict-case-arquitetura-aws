@@ -3,55 +3,227 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Proposta de arquitetura AWS para consolidação automatizada de telemetria, observabilidade e práticas SRE em ambientes distribuídos.">
     <title>Pipeline de Observabilidade SRE - AWS</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #e2e8f0; margin: 0; padding: 40px 20px; display: flex; flex-direction: column; align-items: center; }
-        .container { max-width: 1000px; width: 100%; background-color: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border-top: 5px solid #EC7000; }
-        h1 { color: #38bdf8; text-align: center; margin-bottom: 5px; }
-        p.subtitle { text-align: center; color: #94a3b8; margin-bottom: 30px; }
-        .mermaid { background-color: #f8fafc; padding: 20px; border-radius: 8px; overflow-x: auto; text-align: center; }
-        .footer { margin-top: 30px; text-align: center; font-size: 0.9em; color: #64748b; }
+        :root {
+            color-scheme: dark;
+            --bg: #07111f; --surface: #0f1d31; --surface-2: #16263d;
+            --text: #e8eef7; --muted: #a9b7ca; --blue: #38bdf8;
+            --orange: #f97316; --line: rgba(148, 163, 184, 0.24);
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            margin: 0; min-height: 100vh; overflow-x: hidden; color: var(--text);
+            background:
+                radial-gradient(circle at 10% 0%, rgba(37, 99, 235, 0.19), transparent 35rem),
+                radial-gradient(circle at 90% 10%, rgba(249, 115, 22, 0.12), transparent 30rem), var(--bg);
+            font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif; line-height: 1.6;
+        }
+        a { color: inherit; }
+        .shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 38px 0 48px; }
+        .hero {
+            position: relative; overflow: hidden; padding: 42px clamp(22px, 5vw, 58px);
+            border: 1px solid var(--line); border-top: 5px solid var(--orange); border-radius: 18px;
+            background: linear-gradient(135deg, rgba(22, 38, 61, 0.98), rgba(15, 29, 49, 0.94));
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+        }
+        .hero::after {
+            content: ""; position: absolute; width: 260px; height: 260px; top: -150px; right: -80px;
+            border-radius: 50%; background: rgba(56, 189, 248, 0.08);
+        }
+        .eyebrow { margin: 0 0 8px; color: var(--orange); font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+        h1 { max-width: 880px; margin: 0; color: var(--blue); font-size: clamp(2rem, 5vw, 3.55rem); line-height: 1.08; letter-spacing: -.035em; }
+        .subtitle { max-width: 820px; margin: 18px 0 0; color: var(--muted); font-size: clamp(1rem, 2vw, 1.24rem); }
+        .tags, .actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 24px; }
+        .tag { padding: 6px 11px; border: 1px solid rgba(56, 189, 248, .25); border-radius: 999px; background: rgba(56, 189, 248, .08); color: #cceeff; font-size: .82rem; font-weight: 700; }
+        .button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 16px; border: 1px solid rgba(148, 163, 184, .28); border-radius: 10px; text-decoration: none; font-weight: 750; transition: transform 160ms ease, border-color 160ms ease; }
+        .button:hover { transform: translateY(-1px); border-color: var(--blue); }
+        .button.primary { border-color: var(--orange); background: var(--orange); color: #111827; }
+        .section { margin-top: 24px; }
+        .panel { padding: clamp(20px, 4vw, 34px); border: 1px solid var(--line); border-radius: 16px; background: rgba(15, 29, 49, .94); box-shadow: 0 18px 42px rgba(0, 0, 0, .2); }
+        .panel h2 { margin: 0 0 10px; color: #f8fafc; font-size: clamp(1.35rem, 3vw, 1.8rem); }
+        .panel p { color: var(--muted); }
+        .assumption { display: grid; grid-template-columns: auto 1fr; gap: 15px; align-items: start; border-left: 4px solid var(--blue); }
+        .assumption .marker { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: rgba(56, 189, 248, .12); color: var(--blue); font-weight: 900; }
+        .assumption h2 { margin-bottom: 5px; }
+        .assumption p { margin: 0; }
+        .diagram-wrap { margin-top: 18px; overflow-x: auto; padding: 22px; border-radius: 12px; background: #f8fafc; color: #0f172a; scrollbar-color: #64748b #e2e8f0; }
+        .flowchart { min-width: 860px; display: grid; gap: 10px; }
+        .flow-stage { display: grid; gap: 9px; }
+        .stage-label { width: max-content; padding: 5px 12px; border-radius: 999px; background: #0b4aa2; color: #fff; font-size: .72rem; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
+        .flow-row { display: grid; gap: 12px; align-items: stretch; }
+        .flow-row.one { grid-template-columns: minmax(0, 1fr); padding-inline: 9%; }
+        .flow-row.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .flow-row.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .flow-node { display: grid; min-height: 68px; place-items: center; padding: 11px 13px; border: 2px solid; border-radius: 12px; text-align: center; font-size: .88rem; font-weight: 750; line-height: 1.35; }
+        .flow-node small { display: block; margin-top: 3px; color: #475569; font-size: .75rem; font-weight: 600; }
+        .source { border-color: #0284c7; background: #e0f2fe; }
+        .collect { border-color: #9333ea; background: #f3e8ff; }
+        .normalize { border-color: #0891b2; background: #ecfeff; }
+        .store { border-color: #ea580c; background: #fff7ed; }
+        .consume { border-color: #16a34a; background: #ecfdf5; }
+        .alert { border-color: #e11d48; background: #fff1f2; }
+        .flow-arrow { display: grid; place-items: center; min-height: 34px; color: #475569; font-size: .74rem; font-weight: 750; text-align: center; }
+        .flow-arrow::before { content: "↓"; display: block; color: #0b4aa2; font-size: 1.45rem; line-height: 1; }
+        .governance { padding: 10px 14px; border: 1px dashed #64748b; border-radius: 10px; background: #f1f5f9; color: #475569; text-align: center; font-size: .78rem; font-weight: 800; }
+        .route-chain { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px; }
+        .route-step { position: relative; }
+        .route-step:not(:last-child)::after { content: "→"; position: absolute; top: 50%; right: -21px; color: #e11d48; font-size: 1.25rem; font-weight: 900; transform: translateY(-50%); }
+        .diagram-note { margin: 3px 0 0; color: #64748b !important; font-size: .76rem; text-align: center; }
+        .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+        .card { padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+        .card h3 { margin: 0 0 6px; color: #f8fafc; font-size: 1rem; }
+        .card p { margin: 0; font-size: .93rem; }
+        .card strong { color: #dff6ff; }
+        .flow-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 20px 0 0; padding: 0; list-style: none; counter-reset: phases; }
+        .flow-list li { counter-increment: phases; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: rgba(22, 38, 61, .72); color: var(--muted); font-size: .9rem; }
+        .flow-list li::before { content: counter(phases, decimal-leading-zero); display: block; margin-bottom: 6px; color: var(--orange); font-weight: 900; }
+        .footer { display: flex; justify-content: space-between; gap: 18px; margin-top: 28px; padding: 18px 4px 0; border-top: 1px solid var(--line); color: #8090a6; font-size: .86rem; }
+        @media (max-width: 760px) {
+            .shell { width: min(100% - 20px, 1180px); padding-top: 12px; }
+            .hero, .panel { border-radius: 12px; }
+            .hero, .panel { padding: 24px 20px; }
+            .cards, .flow-list { grid-template-columns: 1fr; }
+            .assumption { grid-template-columns: 1fr; }
+            .assumption .marker { display: none; }
+            .footer { flex-direction: column; }
+            .button { width: 100%; }
+        }
+        @media print {
+            :root { color-scheme: light; }
+            body { background: #fff; color: #0f172a; }
+            .shell { width: 100%; padding: 0; }
+            .hero, .panel, .card { box-shadow: none; break-inside: avoid; }
+            .actions { display: none; }
+        }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
-    <script> mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose', flowchart: { curve: 'basis' } }); </script>
 </head>
 <body>
-    <div class="container">
-        <h1>Pipeline de Observabilidade SRE</h1>
-        <p class="subtitle">Arquitetura de Coleta, Correlação e Resposta Automatizada na AWS</p>
-        <div class="mermaid">
-            graph TD
-                classDef origin fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#000
-                classDef collect fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px,color:#000
-                classDef storage fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000
-                classDef view fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#000
-                classDef auto fill:#ffebee,stroke:#d32f2f,stroke-width:2px,color:#000
-                A1[Microsserviços ECS/EKS]:::origin
-                A2[APIs REST]:::origin
-                B[AWS Distro for OpenTelemetry <br> CloudWatch Agent]:::collect
-                C1[(CloudWatch Logs <br> JSON / Insights)]:::storage
-                C2[(Managed Prometheus <br> Métricas / SLIs)]:::storage
-                C3[(AWS X-Ray <br> Tracing Distribuído)]:::storage
-                D[Amazon Managed Grafana <br> Dashboards / Golden Signals]:::view
-                E1{CloudWatch Alarms}:::auto
-                E2[EventBridge <br> Roteamento de Incidentes]:::auto
-                E3[Step Functions <br> Playbook de Resposta]:::auto
-                E4((Notificação SNS / <br> Auto-Remediação Lambda)):::auto
-                A1 -->|Telemetria| B
-                A2 -->|Eventos| B
-                B -->|Logs c/ trace_id| C1
-                B -->|Métricas de Saturação| C2
-                B -->|Spans de Latência| C3
-                C1 --> D
-                C2 --> D
-                C3 --> D
-                C2 -.->|Violação de SLO| E1
-                C1 -.->|Pico de Erros| E1
-                E1 --> E2
-                E2 --> E3
-                E3 --> E4
-        </div>
-        <div class="footer">Desenvolvido para análise de caso técnico - Observabilidade e SRE</div>
-    </div>
+    <main class="shell">
+        <header class="hero">
+            <p class="eyebrow">Desafio técnico - ICT Itaú / Inova Talentos</p>
+            <h1>Pipeline Automatizada de Observabilidade e SRE</h1>
+            <p class="subtitle">Arquitetura AWS para coletar, padronizar, correlacionar e consolidar logs, métricas, traces e eventos em ambientes distribuídos.</p>
+            <div class="tags" aria-label="Principais temas da solução">
+                <span class="tag">OpenTelemetry</span><span class="tag">CloudWatch</span>
+                <span class="tag">Prometheus</span><span class="tag">Tracing distribuído</span>
+                <span class="tag">Golden Signals</span><span class="tag">Resposta automatizada</span>
+            </div>
+            <div class="actions">
+                <a class="button primary" href="Proposta_AWS_SRE_Lais.pdf" download>Baixar proposta em PDF</a>
+                <a class="button" href="#arquitetura">Ver arquitetura</a>
+            </div>
+        </header>
+
+        <section class="section panel assumption" aria-labelledby="premissa">
+            <span class="marker" aria-hidden="true">i</span>
+            <div>
+                <h2 id="premissa">Premissa de escopo</h2>
+                <p>Considerando os requisitos da vaga - observabilidade, SRE, logs, métricas, traces, APIs e sistemas distribuídos -, o termo <strong>ambiente mesh</strong> é interpretado como um ecossistema de microsserviços ou service mesh. A consolidação proposta é federada: os sinais permanecem em backends especializados, mas compartilham contexto e uma visão central.</p>
+            </div>
+        </section>
+
+        <section class="section panel" id="arquitetura" aria-labelledby="titulo-arquitetura">
+            <h2 id="titulo-arquitetura">Arquitetura proposta</h2>
+            <p>O padrão comum permite correlacionar uma requisição por <strong>service.name</strong>, <strong>environment</strong>, <strong>trace_id</strong> e <strong>correlation_id</strong>. Para múltiplas contas AWS, o Observability Access Manager oferece visibilidade central sem retirar a responsabilidade de cada domínio.</p>
+            <div class="diagram-wrap" role="region" aria-label="Diagrama da pipeline de observabilidade" tabindex="0">
+                <div class="flowchart" role="img" aria-label="Fluxo das fontes distribuídas até coleta, consolidação, visualização, alertas e resposta automatizada">
+                    <div class="flow-stage">
+                        <span class="stage-label">1. Fontes distribuídas</span>
+                        <div class="flow-row three">
+                            <div class="flow-node source">Microsserviços<small>ECS / EKS</small></div>
+                            <div class="flow-node source">APIs REST<small>Lambda</small></div>
+                            <div class="flow-node source">Hosts e workloads<small>Ambiente híbrido</small></div>
+                        </div>
+                    </div>
+
+                    <div class="flow-arrow">Instrumentação da telemetria</div>
+
+                    <div class="flow-stage">
+                        <span class="stage-label">2. Instrumentação e coleta</span>
+                        <div class="flow-row two">
+                            <div class="flow-node collect">OpenTelemetry SDK + ADOT Collector<small>Contexto e telemetria de aplicação</small></div>
+                            <div class="flow-node collect">CloudWatch Agent<small>Host, contêiner e infraestrutura</small></div>
+                        </div>
+                    </div>
+
+                    <div class="flow-arrow">Normalização e enriquecimento</div>
+
+                    <div class="flow-stage">
+                        <span class="stage-label">3. Contexto comum</span>
+                        <div class="flow-row one">
+                            <div class="flow-node normalize">service.name • environment • trace_id • correlation_id</div>
+                        </div>
+                    </div>
+
+                    <div class="flow-arrow">Distribuição por tipo de sinal</div>
+
+                    <div class="flow-stage">
+                        <span class="stage-label">4. Consolidação e correlação</span>
+                        <div class="flow-row three">
+                            <div class="flow-node store">CloudWatch Logs<small>Logs Insights / Log Alarm</small></div>
+                            <div class="flow-node store">CloudWatch Metrics + AMP<small>SLIs / SLOs / PromQL</small></div>
+                            <div class="flow-node store">X-Ray + Application Signals<small>Traces e mapa de serviços</small></div>
+                        </div>
+                    </div>
+
+                    <div class="flow-arrow">Consumo operacional e histórico</div>
+
+                    <div class="flow-stage">
+                        <span class="stage-label">5. Visualização e histórico</span>
+                        <div class="flow-row two">
+                            <div class="flow-node consume">Amazon Managed Grafana<small>Dashboards e Golden Signals</small></div>
+                            <div class="flow-node consume">Firehose → S3 → Glue / Athena<small>Auditoria, tendências e post-mortem</small></div>
+                        </div>
+                        <div class="governance">OAM • IAM • KMS • retenção • mascaramento • controle de cardinalidade</div>
+                    </div>
+
+                    <div class="flow-arrow">Detecção e acionamento</div>
+
+                    <div class="flow-stage">
+                        <span class="stage-label">6. Alertas e resposta</span>
+                        <div class="flow-row two">
+                            <div class="flow-node alert">CloudWatch Alarms<small>Estado do alarme → EventBridge</small></div>
+                            <div class="flow-node alert">AMP Ruler / Alertmanager<small>Agrupamento e deduplicação → SNS</small></div>
+                        </div>
+                        <div class="flow-arrow">Convergência para o playbook</div>
+                        <div class="route-chain">
+                            <div class="flow-node alert route-step">Step Functions<small>Playbook rastreável</small></div>
+                            <div class="flow-node alert route-step">SNS • Lambda • Systems Manager<small>Notificação e remediação segura</small></div>
+                            <div class="flow-node alert route-step">Evidências<small>Auditoria e post-mortem</small></div>
+                        </div>
+                    </div>
+                    <p class="diagram-note">A consolidação ocorre pela padronização do contexto e pela visão central, preservando o backend adequado para cada sinal.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="section panel" aria-labelledby="conexoes">
+            <h2 id="conexoes">Como os componentes se conectam</h2>
+            <div class="cards">
+                <article class="card"><h3>1. Coleta padronizada</h3><p>OpenTelemetry SDK propaga o contexto. O <strong>ADOT Collector</strong> trata telemetria de aplicação; o <strong>CloudWatch Agent</strong> complementa host e infraestrutura.</p></article>
+                <article class="card"><h3>2. Backends especializados</h3><p>Logs seguem para CloudWatch Logs, métricas para CloudWatch Metrics ou AMP e traces para X-Ray/Application Signals. A consolidação ocorre pela correlação, não por um armazenamento único.</p></article>
+                <article class="card"><h3>3. Alertas tecnicamente distintos</h3><p>CloudWatch Alarms geram eventos no EventBridge. Métricas Prometheus usam <strong>Ruler e Alertmanager</strong>, com encaminhamento ao SNS. Ambos alimentam os playbooks.</p></article>
+                <article class="card"><h3>4. Histórico e governança</h3><p>Firehose mantém histórico em S3, catalogado por Glue e consultado no Athena. IAM, KMS, retenção e mascaramento protegem os dados de observabilidade.</p></article>
+            </div>
+        </section>
+
+        <section class="section panel" aria-labelledby="mvp">
+            <h2 id="mvp">MVP recomendado</h2>
+            <ol class="flow-list">
+                <li>Instrumentar dois ou três serviços críticos e definir o contrato JSON de telemetria.</li>
+                <li>Configurar os backends, a visão central e um dashboard com os Golden Signals.</li>
+                <li>Definir SLI/SLO, alertas acionáveis e um playbook seguro de resposta.</li>
+                <li>Simular uma falha, validar a correlação ponta a ponta e registrar o post-mortem.</li>
+            </ol>
+        </section>
+
+        <footer class="footer">
+            <span>Laís Carolline Pinto Moreira - Agosto de 2026</span>
+            <span>Proposta técnica de Observabilidade e SRE na AWS</span>
+        </footer>
+    </main>
 </body>
 </html>
